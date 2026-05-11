@@ -19,4 +19,6 @@ class DensityData(Base):
     building_id = Column(Integer, ForeignKey("buildings.id"))
     wifi_count = Column(Integer)      
     bluetooth_count = Column(Integer) 
+    signal_strength = Column(Float, default=-95)
+    density_score = Column(Integer, default=0)
     timestamp = Column(DateTime, default=datetime.utcnow)
