@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -9,6 +8,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config/app_config.dart';
 import '../models/heatmap_point.dart';
 import '../services/heatmap_api_service.dart';
+import '../services/scanner_service.dart';
+import 'signal_scanner_page.dart'; // Yeni oluşturduğumuz test sayfası
 
 class CampusMapScreen extends StatefulWidget {
   const CampusMapScreen({super.key});
@@ -19,146 +20,145 @@ class CampusMapScreen extends StatefulWidget {
 
 class _CampusMapScreenState extends State<CampusMapScreen> {
   final HeatmapApiService apiService = HeatmapApiService();
+  final ScannerService scannerService = ScannerService();
 
   late WebSocketChannel channel;
   List<HeatmapPoint> points = [];
   bool isLoading = true;
   bool showBottomPanel = true;
-  String currentLocation = 'Konum alinamadi';
+  String currentLocation = 'Konum aliniyor...';
 
   @override
   void initState() {
     super.initState();
-    loadHeatmapData();
+    // Verileri ilk kez çek ve donanım taramasını başlat
+    loadHeatmapData().then((_) {
+      scannerService.startScanning(points);
+    });
     loadCurrentLocation();
     connectWebSocket();
   }
 
-  void connectWebSocket() {
-    channel = WebSocketChannel.connect(Uri.parse(AppConfig.websocketUrl));
-
-    channel.stream.listen(
-      (message) {
-        debugPrint('WEBSOCKET MESAJI: $message');
-
-        final decoded = jsonDecode(message as String);
-        if (decoded is! Map<String, dynamic>) return;
-        if (decoded['type'] != 'density_snapshot') return;
-
-        final data = decoded['data'];
-        if (data is! List) return;
-
-        setState(() {
-          points = data
-              .map((item) => HeatmapPoint.fromJson(Map<String, dynamic>.from(item)))
-              .toList();
-          isLoading = false;
-        });
-      },
-      onError: (error) {
-        debugPrint('WEBSOCKET HATASI: $error');
-      },
-      onDone: () {
-        debugPrint('WEBSOCKET BAGLANTISI KAPANDI');
-      },
-    );
+  @override
+  void dispose() {
+    // Sayfadan çıkarken hem tarayıcıyı hem soketi kapat
+    scannerService.stopScanning();
+    channel.sink.close();
+    super.dispose();
   }
 
-  Future<void> loadCurrentLocation() async {
+  void connectWebSocket() {
     try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      channel = WebSocketChannel.connect(Uri.parse(AppConfig.websocketUrl));
+      channel.stream.listen(
+        (message) {
+          debugPrint('WEBSOCKET MESAJI: $message');
+          final decoded = jsonDecode(message as String);
+          
+          if (decoded is Map<String, dynamic> && decoded['type'] == 'density_snapshot') {
+            final data = decoded['data'] as List;
+            if (mounted) {
+              setState(() {
+                points = data.map((item) => HeatmapPoint.fromJson(Map<String, dynamic>.from(item))).toList();
+                isLoading = false;
+              });
+            }
+          }
+        },
+        onError: (error) {
+          debugPrint('WebSocket Hatası: $error');
+          Future.delayed(const Duration(seconds: 5), connectWebSocket);
+        },
       );
-
-      if (!mounted) return;
-      setState(() {
-        currentLocation = '${position.latitude}, ${position.longitude}';
-      });
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        currentLocation = 'Konum alinamadi';
-      });
+      debugPrint('Soket bağlantı hatası: $e');
     }
   }
 
   Future<void> loadHeatmapData() async {
     try {
       final data = await apiService.fetchHeatmapData();
-
-      if (!mounted) return;
-      setState(() {
-        points = data;
-        isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          points = data;
+          isLoading = false;
+        });
+      }
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        isLoading = false;
-      });
+      debugPrint('Veri yükleme hatası: $e');
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
 
-      debugPrint('Hata: $e');
+  Future<void> loadCurrentLocation() async {
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      if (mounted) {
+        setState(() {
+          currentLocation = '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
+        });
+      }
+    } catch (e) {
+      debugPrint('Konum alınamadı: $e');
     }
   }
 
   Color getDensityColor(int intensity) {
-    if (intensity >= 70) {
-      return Colors.red;
-    }
-    if (intensity >= 30) {
-      return Colors.orange;
-    }
-    return Colors.green;
-  }
-
-  double getRadius(int intensity) {
-    if (intensity >= 70) {
-      return 90;
-    }
-    if (intensity >= 30) {
-      return 65;
-    }
-    return 40;
+    if (intensity >= 70) return Colors.red.withOpacity(0.7);
+    if (intensity >= 35) return Colors.orange.withOpacity(0.7);
+    return Colors.green.withOpacity(0.7);
   }
 
   String getDensityLabel(String level) {
     switch (level) {
-      case 'high':
-        return 'Yuksek';
-      case 'medium':
-        return 'Orta';
-      default:
-        return 'Dusuk';
+      case 'high': return 'Çok Yoğun';
+      case 'medium': return 'Orta Yoğun';
+      default: return 'Sakin';
     }
-  }
-
-  int getTotalDevices(List<HeatmapPoint> items) {
-    return items.fold(0, (total, point) => total + point.totalDevices);
-  }
-
-  @override
-  void dispose() {
-    channel.sink.close();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final sortedPoints = [...points]
-      ..sort((a, b) => b.intensity.compareTo(a.intensity));
-    final busiestPoint = sortedPoints.isEmpty ? null : sortedPoints.first;
+    // Listeyi yoğunluğa göre sırala (Arkadaşlarının görsel düzeni için)
+    final sortedPoints = [...points]..sort((a, b) => b.intensity.compareTo(a.intensity));
 
     return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Kampüs Yoğunluk Haritası',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        actions: [
+          // TEST BUTONU: Donanımın çalıştığını çıplak gözle görmek için
+          IconButton(
+            icon: const Icon(Icons.radar, color: Colors.blue, size: 28),
+            tooltip: 'Sinyal Tarayıcıyı Aç',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SignalScannerPage()),
+              );
+            },
+          ),
+          // Katman/Liste Gizleme Butonu
+          IconButton(
+            icon: Icon(showBottomPanel ? Icons.layers_clear : Icons.list),
+            onPressed: () => setState(() => showBottomPanel = !showBottomPanel),
+          ),
+        ],
+      ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : Stack(
               children: [
                 FlutterMap(
                   options: const MapOptions(
-                    initialCenter: LatLng(38.3334, 38.4393),
-                    initialZoom: 15.5,
-                    minZoom: 14,
-                    maxZoom: 18,
+                    initialCenter: LatLng(38.3335, 38.4350),
+                    initialZoom: 15.0,
+                    maxZoom: 18.0,
+                    minZoom: 13.0,
                   ),
                   children: [
                     TileLayer(
@@ -169,10 +169,11 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
                       circles: points.map((point) {
                         return CircleMarker(
                           point: LatLng(point.lat, point.lng),
-                          radius: getRadius(point.intensity),
+                          color: getDensityColor(point.intensity),
+                          borderStrokeWidth: 2,
+                          borderColor: Colors.white,
                           useRadiusInMeter: true,
-                          color: getDensityColor(point.intensity).withValues(alpha: 0.35),
-                          borderStrokeWidth: 0,
+                          radius: 70,
                         );
                       }).toList(),
                     ),
@@ -180,33 +181,23 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
                       markers: points.map((point) {
                         return Marker(
                           point: LatLng(point.lat, point.lng),
-                          width: 120,
-                          height: 60,
+                          width: 80,
+                          height: 80,
                           child: Column(
                             children: [
-                              Text(
-                                point.name,
-                                textAlign: TextAlign.center,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  shadows: [
-                                    Shadow(blurRadius: 6, color: Colors.black),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 4),
                               Container(
-                                width: 12,
-                                height: 12,
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: getDensityColor(point.intensity),
-                                  shape: BoxShape.circle,
+                                  color: Colors.white.withOpacity(0.8),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  point.name,
+                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
+                              const Icon(Icons.location_on, color: Colors.blue, size: 30),
                             ],
                           ),
                         );
@@ -214,162 +205,103 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
                     ),
                   ],
                 ),
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
+                
+                // Alt Panel (Bina Listesi)
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 300),
+                  bottom: showBottomPanel ? 0 : -300,
+                  left: 0,
+                  right: 0,
+                  height: 350,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10),
+                      ],
+                    ),
                     child: Column(
                       children: [
                         Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
+                          margin: const EdgeInsets.only(top: 12),
+                          width: 40,
+                          height: 4,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.92),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: const [
-                              BoxShadow(color: Colors.black12, blurRadius: 12),
-                            ],
+                            color: Colors.grey[300],
+                            borderRadius: BorderRadius.circular(2),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text(
-                                'Kampus Yogunluk Analizi',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Bina Yoğunluk Listesi',
+                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                  ),
+                                  Text(
+                                    'Konum: $currentLocation',
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 10),
-                              Text('Konum: $currentLocation'),
-                              const SizedBox(height: 6),
-                              Text('Toplam cihaz: ${getTotalDevices(points)}'),
-                              const SizedBox(height: 6),
-                              Text('En yogun bina: ${busiestPoint?.name ?? 'Veri yok'}'),
-                              const SizedBox(height: 6),
-                              Text('Aktif bolge sayisi: ${points.length}'),
+                              const Icon(Icons.info_outline, color: Colors.blue),
                             ],
                           ),
                         ),
-                        const Spacer(),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          width: double.infinity,
-                          height: showBottomPanel ? 340 : 70,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(24),
-                            boxShadow: const [
-                              BoxShadow(blurRadius: 12, color: Colors.black12),
-                            ],
-                          ),
-                          child: Column(
-                            children: [
-                              InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    showBottomPanel = !showBottomPanel;
-                                  });
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.local_fire_department,
-                                        color: Colors.red,
+                        Expanded(
+                          child: ListView.builder(
+                            padding: EdgeInsets.zero,
+                            itemCount: sortedPoints.length,
+                            itemBuilder: (context, index) {
+                              final point = sortedPoints[index];
+                              return Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[50],
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.grey[200]!),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 12,
+                                      height: 12,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: getDensityColor(point.intensity).withOpacity(1),
                                       ),
-                                      const SizedBox(width: 10),
-                                      const Expanded(
-                                        child: Text(
-                                          'Backend Yogunluk Verileri',
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            point.name,
+                                            style: const TextStyle(fontWeight: FontWeight.bold),
                                           ),
-                                        ),
+                                          Text(
+                                            'Sinyal: ${point.signalStrength.toStringAsFixed(0)} dBm | Cihaz: ${point.totalDevices}',
+                                            style: const TextStyle(fontSize: 12, color: Colors.black54),
+                                          ),
+                                        ],
                                       ),
-                                      Icon(
-                                        showBottomPanel
-                                            ? Icons.keyboard_arrow_down
-                                            : Icons.keyboard_arrow_up,
-                                      ),
-                                    ],
-                                  ),
+                                    ),
+                                    Text(
+                                      '${point.intensity}',
+                                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              if (showBottomPanel)
-                                Expanded(
-                                  child: ListView.builder(
-                                    itemCount: sortedPoints.length,
-                                    itemBuilder: (context, index) {
-                                      final point = sortedPoints[index];
-
-                                      return Container(
-                                        margin: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 6,
-                                        ),
-                                        padding: const EdgeInsets.all(14),
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey.shade100,
-                                          borderRadius: BorderRadius.circular(18),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Container(
-                                              width: 16,
-                                              height: 16,
-                                              decoration: BoxDecoration(
-                                                color: getDensityColor(point.intensity),
-                                                shape: BoxShape.circle,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 14),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    point.name,
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      fontSize: 16,
-                                                      fontWeight: FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    'Wi-Fi: ${point.wifiCount}  Bluetooth: ${point.bluetoothCount}',
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors.black54,
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    'Sinyal: ${point.signalStrength.toStringAsFixed(0)} dBm  Durum: ${getDensityLabel(point.densityLevel)}',
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors.black54,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            Text(
-                                              '${point.intensity}',
-                                              style: const TextStyle(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                            ],
+                              );
+                            },
                           ),
                         ),
                       ],
