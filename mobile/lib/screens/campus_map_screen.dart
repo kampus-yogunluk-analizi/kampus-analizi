@@ -9,7 +9,7 @@ import '../config/app_config.dart';
 import '../models/heatmap_point.dart';
 import '../services/heatmap_api_service.dart';
 import '../services/scanner_service.dart';
-import 'signal_scanner_page.dart'; // Yeni oluşturduğumuz test sayfası
+import 'signal_scanner_page.dart'; 
 
 class CampusMapScreen extends StatefulWidget {
   const CampusMapScreen({super.key});
@@ -31,7 +31,6 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
   @override
   void initState() {
     super.initState();
-    // Verileri ilk kez çek ve donanım taramasını başlat
     loadHeatmapData().then((_) {
       scannerService.startScanning(points);
     });
@@ -41,7 +40,6 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
 
   @override
   void dispose() {
-    // Sayfadan çıkarken hem tarayıcıyı hem soketi kapat
     scannerService.stopScanning();
     channel.sink.close();
     super.dispose();
@@ -121,7 +119,6 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Listeyi yoğunluğa göre sırala (Arkadaşlarının görsel düzeni için)
     final sortedPoints = [...points]..sort((a, b) => b.intensity.compareTo(a.intensity));
 
     return Scaffold(
@@ -131,7 +128,6 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
-          // TEST BUTONU: Donanımın çalıştığını çıplak gözle görmek için
           IconButton(
             icon: const Icon(Icons.radar, color: Colors.blue, size: 28),
             tooltip: 'Sinyal Tarayıcıyı Aç',
@@ -142,7 +138,7 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
               );
             },
           ),
-          // Katman/Liste Gizleme Butonu
+          
           IconButton(
             icon: Icon(showBottomPanel ? Icons.layers_clear : Icons.list),
             onPressed: () => setState(() => showBottomPanel = !showBottomPanel),
@@ -206,7 +202,6 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
                   ],
                 ),
                 
-                // Alt Panel (Bina Listesi)
                 AnimatedPositioned(
                   duration: const Duration(milliseconds: 300),
                   bottom: showBottomPanel ? 0 : -300,

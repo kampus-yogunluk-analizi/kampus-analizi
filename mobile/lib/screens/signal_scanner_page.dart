@@ -32,7 +32,6 @@ class _SignalScannerPageState extends State<SignalScannerPage> {
       }
     });
 
-    // Taramayı başlat (4 saniye sürer)
     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 4));
     
     if (mounted) setState(() => isScanning = false);
