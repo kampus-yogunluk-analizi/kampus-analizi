@@ -13,6 +13,8 @@ class HeatmapPoint {
   final String trend;
   final bool isAnomaly;
   final int sampleCount;
+  // RF analiz alanları
+  final RfMetrics? rf;
 
   HeatmapPoint({
     required this.buildingId,
@@ -29,6 +31,7 @@ class HeatmapPoint {
     this.trend = 'stable',
     this.isAnomaly = false,
     this.sampleCount = 0,
+    this.rf,
   });
 
   factory HeatmapPoint.fromJson(Map<String, dynamic> json) {
@@ -49,10 +52,61 @@ class HeatmapPoint {
       trend: json['trend'] as String? ?? 'stable',
       isAnomaly: json['is_anomaly'] as bool? ?? false,
       sampleCount: (json['sample_count'] as num?)?.toInt() ?? 0,
+      rf: json['rf'] != null
+          ? RfMetrics.fromJson(json['rf'] as Map<String, dynamic>)
+          : null,
     );
   }
 
   int get totalDevices => wifiCount + bluetoothCount;
+}
+
+class RfMetrics {
+  final double estimatedDistanceM;
+  final double snrDb;
+  final String channelQuality;
+  final double shannonCapacityMbps;
+  final double ber;
+  final String berQuality;
+  final int interferenceScore;
+  final String recommendedChannel;
+  final Map<String, String> formulas;
+
+  RfMetrics({
+    required this.estimatedDistanceM,
+    required this.snrDb,
+    required this.channelQuality,
+    required this.shannonCapacityMbps,
+    required this.ber,
+    required this.berQuality,
+    required this.interferenceScore,
+    required this.recommendedChannel,
+    required this.formulas,
+  });
+
+  factory RfMetrics.fromJson(Map<String, dynamic> json) {
+    final formMap = <String, String>{};
+    if (json['formulas'] is Map) {
+      (json['formulas'] as Map).forEach((k, v) {
+        formMap[k.toString()] = v.toString();
+      });
+    }
+    return RfMetrics(
+      estimatedDistanceM:
+          (json['estimated_distance_m'] as num?)?.toDouble() ?? 0,
+      snrDb: (json['snr_db'] as num?)?.toDouble() ?? 0,
+      channelQuality: json['channel_quality'] as String? ?? 'fair',
+      shannonCapacityMbps:
+          (json['shannon_capacity_mbps'] as num?)?.toDouble() ?? 0,
+      ber: (json['ber'] as num?)?.toDouble() ?? 1.0,
+      berQuality: json['ber_quality'] as String? ?? 'poor',
+      interferenceScore:
+          (json['interference_score'] as num?)?.toInt() ?? 0,
+      recommendedChannel:
+          json['recommended_channel'] as String? ?? '2.4 GHz',
+      formulas: formMap,
+    );
+  }
 }
 
 class HistoryPoint {

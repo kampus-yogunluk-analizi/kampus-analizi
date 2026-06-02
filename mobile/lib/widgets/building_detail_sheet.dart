@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/heatmap_point.dart';
+import '../screens/rf_analysis_screen.dart';
 import '../services/heatmap_api_service.dart';
 import '../theme/app_theme.dart';
 import 'density_history_chart.dart';
@@ -127,6 +128,34 @@ class _BuildingDetailSheetState extends State<BuildingDetailSheet> {
                   ),
                 ],
               ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RfAnalysisScreen(point: widget.point),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.cell_tower_rounded, size: 18),
+                label: Text(
+                  'RF Analizi Göster',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),

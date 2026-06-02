@@ -4,6 +4,7 @@ from statistics import mean, stdev
 from sqlalchemy.orm import Session
 
 from app.models.models import Building, DensityData
+from app.services.rf_analysis import build_rf_report
 
 
 SIGNAL_MIN_DBM = -95
@@ -167,6 +168,8 @@ def serialize_density(
         trend = calculate_trend(history)
         anomaly = is_anomaly(score, history)
 
+    rf = build_rf_report(signal_strength, wifi_count + bluetooth_count)
+
     return {
         "building_id": building.id,
         "name": building.name,
@@ -183,6 +186,7 @@ def serialize_density(
         "trend": trend,
         "is_anomaly": anomaly,
         "sample_count": recent_count,
+        **rf,
     }
 
 
