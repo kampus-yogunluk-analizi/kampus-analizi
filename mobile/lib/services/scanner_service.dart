@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -53,7 +54,7 @@ class ScannerService {
         bestRssi,
       );
     } catch (e) {
-      print("Tarama veya Gönderme Hatası: $e");
+      debugPrint("Tarama veya Gönderme Hatası: $e");
     }
   }
 
@@ -84,9 +85,9 @@ class ScannerService {
           "signal_strength": rssi
         }),
       );
-      print("Veri gönderildi: Bina $buildingId, Cihaz: $count");
+      debugPrint("Veri gönderildi: Bina $buildingId, Cihaz: $count");
     } catch (e) {
-      print("Backend Gönderim Hatası: $e");
+      debugPrint("Backend Gönderim Hatası: $e");
     }
   }
 }

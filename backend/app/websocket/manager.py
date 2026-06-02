@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 
 
 class WebSocketManager:
@@ -21,10 +21,10 @@ class WebSocketManager:
     async def broadcast(self, payload: dict[str, Any]) -> None:
         disconnected = []
 
-        for connection in self.active_connections:
+        for connection in self.active_connections.copy():
             try:
                 await self.send_json(connection, payload)
-            except Exception:
+            except (RuntimeError, WebSocketDisconnect):
                 disconnected.append(connection)
 
         for connection in disconnected:

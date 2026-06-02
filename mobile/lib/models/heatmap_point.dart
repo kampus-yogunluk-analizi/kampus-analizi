@@ -9,6 +9,10 @@ class HeatmapPoint {
   final double signalStrength;
   final String densityLevel;
   final DateTime? timestamp;
+  final int confidenceScore;
+  final String trend;
+  final bool isAnomaly;
+  final int sampleCount;
 
   HeatmapPoint({
     required this.buildingId,
@@ -21,11 +25,13 @@ class HeatmapPoint {
     required this.signalStrength,
     required this.densityLevel,
     required this.timestamp,
+    this.confidenceScore = 0,
+    this.trend = 'stable',
+    this.isAnomaly = false,
+    this.sampleCount = 0,
   });
 
   factory HeatmapPoint.fromJson(Map<String, dynamic> json) {
-    final timestampValue = json['timestamp'] as String?;
-
     return HeatmapPoint(
       buildingId: (json['building_id'] as num?)?.toInt(),
       name: json['name'] as String? ?? '',
@@ -36,9 +42,38 @@ class HeatmapPoint {
       bluetoothCount: (json['bluetooth_count'] as num?)?.toInt() ?? 0,
       signalStrength: (json['signal_strength'] as num?)?.toDouble() ?? -95,
       densityLevel: json['density_level'] as String? ?? 'low',
-      timestamp: timestampValue == null ? null : DateTime.tryParse(timestampValue),
+      timestamp: json['timestamp'] == null
+          ? null
+          : DateTime.tryParse(json['timestamp'] as String),
+      confidenceScore: (json['confidence_score'] as num?)?.toInt() ?? 0,
+      trend: json['trend'] as String? ?? 'stable',
+      isAnomaly: json['is_anomaly'] as bool? ?? false,
+      sampleCount: (json['sample_count'] as num?)?.toInt() ?? 0,
     );
   }
 
   int get totalDevices => wifiCount + bluetoothCount;
+}
+
+class HistoryPoint {
+  final DateTime hour;
+  final int avgIntensity;
+  final String densityLevel;
+  final int sampleCount;
+
+  HistoryPoint({
+    required this.hour,
+    required this.avgIntensity,
+    required this.densityLevel,
+    required this.sampleCount,
+  });
+
+  factory HistoryPoint.fromJson(Map<String, dynamic> json) {
+    return HistoryPoint(
+      hour: DateTime.parse(json['hour'] as String),
+      avgIntensity: (json['avg_intensity'] as num?)?.toInt() ?? 0,
+      densityLevel: json['density_level'] as String? ?? 'low',
+      sampleCount: (json['sample_count'] as num?)?.toInt() ?? 0,
+    );
+  }
 }
